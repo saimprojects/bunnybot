@@ -12,7 +12,7 @@ def get_db_connection():
         # Parse the URL
         result = urlparse(url)
         
-        # Check if it's PostgreSQL
+        # Connect with SSL for Railway
         if 'postgres' in result.scheme:
             conn = psycopg2.connect(url, sslmode='require')
         else:
@@ -20,17 +20,16 @@ def get_db_connection():
         
         return conn
     except Exception as e:
-        print(f"Database connection error: {e}")
+        print(f"❌ Database connection error: {e}")
         raise
 
 def init_db():
-    """Initialize database tables"""
+    """Initialize all database tables"""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Create tables
-    queries = [
-        """
+    # Users table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id BIGINT PRIMARY KEY,
             username TEXT,
@@ -40,8 +39,10 @@ def init_db():
             referrals INT DEFAULT 0,
             referral_earnings FLOAT DEFAULT 0
         )
-        """,
-        """
+    """)
+    
+    # Products table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
@@ -55,8 +56,10 @@ def init_db():
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT NOW()
         )
-        """,
-        """
+    """)
+    
+    # Product items table (accounts)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS product_items (
             id SERIAL PRIMARY KEY,
             product_id INT REFERENCES products(id) ON DELETE CASCADE,
@@ -66,8 +69,10 @@ def init_db():
             sold_at TIMESTAMP,
             order_id TEXT
         )
-        """,
-        """
+    """)
+    
+    # Orders table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id TEXT PRIMARY KEY,
             user_id BIGINT REFERENCES users(id),
@@ -75,12 +80,14 @@ def init_db():
             quantity INT DEFAULT 1,
             total_amount FLOAT,
             payment_method TEXT,
-            status TEXT DEFAULT 'Confirmed',
+            status TEXT DEFAULT 'Pending',
             created_at TIMESTAMP DEFAULT NOW(),
             delivery_details JSONB
         )
-        """,
-        """
+    """)
+    
+    # Transactions table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id SERIAL PRIMARY KEY,
             user_id BIGINT REFERENCES users(id),
@@ -89,8 +96,10 @@ def init_db():
             status TEXT DEFAULT 'completed',
             created_at TIMESTAMP DEFAULT NOW()
         )
-        """,
-        """
+    """)
+    
+    # Withdrawals table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS withdrawals (
             id SERIAL PRIMARY KEY,
             user_id BIGINT REFERENCES users(id),
@@ -99,8 +108,10 @@ def init_db():
             status TEXT DEFAULT 'Pending',
             created_at TIMESTAMP DEFAULT NOW()
         )
-        """,
-        """
+    """)
+    
+    # Pending payments table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS pending_payments (
             id SERIAL PRIMARY KEY,
             user_id BIGINT,
@@ -111,27 +122,22 @@ def init_db():
             expires_at TIMESTAMP,
             status TEXT DEFAULT 'pending'
         )
-        """,
-        """
+    """)
+    
+    # Support messages table
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS support_messages (
             id SERIAL PRIMARY KEY,
             user_id BIGINT,
             message TEXT,
             created_at TIMESTAMP DEFAULT NOW()
         )
-        """
-    ]
-    
-    for query in queries:
-        try:
-            cur.execute(query)
-        except Exception as e:
-            print(f"Error executing query: {e}")
+    """)
     
     conn.commit()
     cur.close()
     conn.close()
-    print("Database initialized successfully")
+    print("✅ Database initialized successfully!")
 
 def get_user(user_id):
     """Get user by ID"""
@@ -153,13 +159,30 @@ def create_user(user_id, username):
             (user_id, username)
         )
         conn.commit()
+        return True
     except Exception as e:
-        print(f"Error creating user: {e}")
+        print(f"❌ Error creating user: {e}")
+        return False
     finally:
         cur.close()
         conn.close()
 
-def get_products():
+def update_user_balance(user_id, amount):
+    """Update user balance"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (amount, user_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"❌ Error updating balance: {e}")
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+def get_all_products():
     """Get all active products"""
     conn = get_db_connection()
     cur = conn.cursor()

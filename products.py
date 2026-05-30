@@ -1,5 +1,4 @@
 from database import get_db_connection
-import json
 
 def get_available_items(product_id, quantity):
     """Get available items for a product"""
@@ -42,17 +41,30 @@ def add_product(name, duration, price, stock, warranty, description, features, c
     conn.close()
     return product_id
 
-def add_product_items(product_id, items_json):
+def add_product_items(product_id, items_list):
     """Add items to a product"""
     conn = get_db_connection()
     cur = conn.cursor()
-    items = json.loads(items_json)
-    for item in items:
+    for item in items_list:
         cur.execute(
             "INSERT INTO product_items (product_id, email, password) VALUES (%s, %s, %s)",
             (product_id, item['email'], item['password'])
         )
     # Update stock count
+    cur.execute("""
+        UPDATE products SET stock = (
+            SELECT COUNT(*) FROM product_items 
+            WHERE product_id = %s AND is_sold = FALSE
+        ) WHERE id = %s
+    """, (product_id, product_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def update_product_stock(product_id):
+    """Update product stock count"""
+    conn = get_db_connection()
+    cur = conn.cursor()
     cur.execute("""
         UPDATE products SET stock = (
             SELECT COUNT(*) FROM product_items 
