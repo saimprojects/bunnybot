@@ -1,24 +1,34 @@
-import psycopg2
 import os
+import psycopg2
 from urllib.parse import urlparse
 
 def get_db_connection():
+    """Get database connection"""
     url = os.environ.get('DATABASE_URL')
     if not url:
         raise ValueError("DATABASE_URL environment variable is not set")
     
-    # Handle both local (SQLite/Postgres) and Railway (Postgres)
-    # For local testing, we might want to support SQLite or a local Postgres
-    # But user specifically asked for Postgres on Railway
-    
-    conn = psycopg2.connect(url, sslmode='require' if 'railway.app' in url else 'prefer')
-    return conn
+    try:
+        # Parse the URL
+        result = urlparse(url)
+        
+        # Check if it's PostgreSQL
+        if 'postgres' in result.scheme:
+            conn = psycopg2.connect(url, sslmode='require')
+        else:
+            conn = psycopg2.connect(url)
+        
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        raise
 
 def init_db():
+    """Initialize database tables"""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Create tables based on user requirements
+    # Create tables
     queries = [
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -34,25 +44,27 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY,
-            name TEXT,
+            name TEXT NOT NULL,
             duration TEXT,
-            price FLOAT,
+            price FLOAT DEFAULT 0,
             stock INT DEFAULT 0,
             description TEXT,
             features TEXT,
             warranty TEXT,
             category TEXT,
-            is_active BOOLEAN DEFAULT TRUE
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW()
         )
         """,
         """
         CREATE TABLE IF NOT EXISTS product_items (
             id SERIAL PRIMARY KEY,
-            product_id INT REFERENCES products(id),
-            email TEXT,
-            password TEXT,
+            product_id INT REFERENCES products(id) ON DELETE CASCADE,
+            email TEXT NOT NULL,
+            password TEXT NOT NULL,
             is_sold BOOLEAN DEFAULT FALSE,
-            sold_at TIMESTAMP
+            sold_at TIMESTAMP,
+            order_id TEXT
         )
         """,
         """
@@ -60,7 +72,7 @@ def init_db():
             id TEXT PRIMARY KEY,
             user_id BIGINT REFERENCES users(id),
             product_id INT REFERENCES products(id),
-            quantity INT,
+            quantity INT DEFAULT 1,
             total_amount FLOAT,
             payment_method TEXT,
             status TEXT DEFAULT 'Confirmed',
@@ -74,6 +86,7 @@ def init_db():
             user_id BIGINT REFERENCES users(id),
             type TEXT,
             amount FLOAT,
+            status TEXT DEFAULT 'completed',
             created_at TIMESTAMP DEFAULT NOW()
         )
         """,
@@ -110,14 +123,18 @@ def init_db():
     ]
     
     for query in queries:
-        cur.execute(query)
+        try:
+            cur.execute(query)
+        except Exception as e:
+            print(f"Error executing query: {e}")
     
     conn.commit()
     cur.close()
     conn.close()
+    print("Database initialized successfully")
 
-# Shared helper functions for bot and webapp
 def get_user(user_id):
+    """Get user by ID"""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
@@ -127,23 +144,33 @@ def get_user(user_id):
     return user
 
 def create_user(user_id, username):
+    """Create new user if not exists"""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO users (id, username) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING", (user_id, username))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute(
+            "INSERT INTO users (id, username) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING", 
+            (user_id, username)
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error creating user: {e}")
+    finally:
+        cur.close()
+        conn.close()
 
 def get_products():
+    """Get all active products"""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM products WHERE is_active = TRUE AND stock > 0")
+    cur.execute("SELECT * FROM products WHERE is_active = TRUE AND stock > 0 ORDER BY id")
     products = cur.fetchall()
     cur.close()
     conn.close()
     return products
 
 def get_product(product_id):
+    """Get product by ID"""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
