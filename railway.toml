@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+
+[[services]]
+name = "bot"
+startCommand = "python bot/main.py"
