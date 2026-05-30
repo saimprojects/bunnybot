@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install python-telegram-bot==20.7 psycopg2-binary==2.9.9 python-dotenv==1.0.0"]
+
+[phases.start]
+cmd = "python main.py"
